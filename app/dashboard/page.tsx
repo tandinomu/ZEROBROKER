@@ -217,6 +217,22 @@ function DashboardContent() {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
   }
 
+  function extractDocPath(urlOrPath: string, bucket: string): string {
+    if (urlOrPath.startsWith('http')) {
+      const marker = `/${bucket}/`
+      const idx = urlOrPath.indexOf(marker)
+      return idx !== -1 ? urlOrPath.slice(idx + marker.length) : urlOrPath
+    }
+    return urlOrPath
+  }
+
+  async function viewDoc(urlOrPath: string) {
+    const path = extractDocPath(urlOrPath, 'listing-documents')
+    const { data, error } = await supabase.storage.from('listing-documents').createSignedUrl(path, 60)
+    if (error || !data) { toast.error('Could not open file'); return }
+    window.open(data.signedUrl, '_blank')
+  }
+
   const unread = notifications.filter(n => !n.is_read).length
   const firstName = profile?.full_name?.split(' ')[0] || 'there'
   const canList = profile?.role === 'seller' || profile?.role === 'both' || profile?.role === 'admin'
