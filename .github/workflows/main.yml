@@ -56,6 +56,11 @@ jobs:
       - name: Pull Vercel Environment
         run: vercel pull --yes --environment=production
 
+      - name: Set environment variables
+        run: |
+          echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" >> .env.production.local
+          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" >> .env.production.local
+
       - name: Build
         run: vercel build --prod
 
