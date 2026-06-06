@@ -346,3 +346,174 @@ VALUES
   ARRAY['https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=800'],
   ARRAY['Water Supply','Electricity','Internet Ready']
 );
+
+-- ============================================================
+-- LIFECYCLE MIGRATION
+-- Run this section in Supabase SQL Editor after the initial schema.
+-- Safe to re-run (uses IF NOT EXISTS / IF EXISTS guards).
+-- ============================================================
+
+-- 1. Add CID verification columns to profiles
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS cid_url TEXT,
+  ADD COLUMN IF NOT EXISTS cid_back_url TEXT,
+  ADD COLUMN IF NOT EXISTS cid_status TEXT NOT NULL DEFAULT 'unverified'
+    CHECK (cid_status IN ('unverified', 'pending', 'verified', 'rejected'));
+
+-- 2. Add lifecycle columns to listings
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS rejection_reason TEXT,
+  ADD COLUMN IF NOT EXISTS rejected_by UUID REFERENCES profiles(id),
+  ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+
+-- 2. Expand the status check constraint to include all lifecycle states
+ALTER TABLE listings DROP CONSTRAINT IF EXISTS listings_status_check;
+ALTER TABLE listings ADD CONSTRAINT listings_status_check
+  CHECK (status IN (
+    'draft',          -- created, not submitted
+    'pending',        -- submitted for admin review
+    'approved',       -- admin approved → publicly visible (PUBLISHED)
+    'active',         -- legacy alias for approved
+    'rejected',       -- admin rejected → seller must fix & resubmit
+    'archived',       -- taken off market by seller (not sold)
+    'enquiring',      -- approved + has pending buyer enquiries
+    'negotiating',    -- approved + enquiry accepted, in negotiation
+    'sold',           -- deal confirmed by both parties
+    'paused'          -- temporarily hidden (legacy)
+  ));
+
+-- 3. Update the RLS select policy so public can see all "live" states
+DROP POLICY IF EXISTS "listings_select_active" ON listings;
+DROP POLICY IF EXISTS "listings_select_public" ON listings;
+CREATE POLICY "listings_select_public" ON listings FOR SELECT TO anon, authenticated USING (
+  status IN ('approved', 'active', 'enquiring', 'negotiating', 'sold')
+  OR auth.uid() = owner_id
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
+
+-- 4. Fix the enquiry trigger: only auto-update status for listings
+--    that are in an active/live state; leave all other states untouched.
+CREATE OR REPLACE FUNCTION update_listing_status()
+RETURNS TRIGGER AS $$
+DECLARE
+  lid UUID;
+  accepted_count INTEGER;
+  pending_count INTEGER;
+BEGIN
+  lid := COALESCE(NEW.listing_id, OLD.listing_id);
+
+  -- Only apply enquiry-driven status changes to live listings
+  IF NOT EXISTS (
+    SELECT 1 FROM listings WHERE id = lid AND status IN ('approved','active','enquiring','negotiating')
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT COUNT(*) INTO accepted_count
+    FROM enquiries WHERE listing_id = lid AND status IN ('accepted','negotiating');
+  SELECT COUNT(*) INTO pending_count
+    FROM enquiries WHERE listing_id = lid AND status = 'pending';
+
+  IF accepted_count > 0 THEN
+    UPDATE listings SET status = 'negotiating', updated_at = NOW()
+      WHERE id = lid AND status IN ('approved','active','enquiring');
+  ELSIF pending_count > 0 THEN
+    UPDATE listings SET status = 'enquiring', updated_at = NOW()
+      WHERE id = lid AND status IN ('approved','active');
+  ELSE
+    -- All enquiries resolved → revert to plain approved
+    UPDATE listings SET status = 'approved', updated_at = NOW()
+      WHERE id = lid AND status IN ('enquiring','negotiating');
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 5. Notifications type: add 'message' if not already present
+--    (Supabase CHECK constraints on TEXT columns require ALTER to drop/re-add)
+ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
+ALTER TABLE notifications ADD CONSTRAINT notifications_type_check
+  CHECK (type IN ('enquiry','status_change','deal','review','admin','system','message'));
+
+-- ============================================================
+-- STORAGE BUCKET POLICIES
+-- Run this section in Supabase SQL Editor if uploads return 400.
+-- Supabase storage uses RLS on storage.objects — buckets need
+-- explicit INSERT/SELECT/DELETE policies or all uploads are blocked.
+-- ============================================================
+
+-- listing-images (public bucket — anyone can view, authenticated can upload)
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('listing-images', 'listing-images', true, 10485760)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "listing_images_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'listing-images');
+
+CREATE POLICY "listing_images_select" ON storage.objects
+  FOR SELECT TO anon, authenticated
+  USING (bucket_id = 'listing-images');
+
+-- listing-documents (private bucket — owner and admins only)
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('listing-documents', 'listing-documents', false, 10485760)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "listing_docs_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'listing-documents');
+
+CREATE POLICY "listing_docs_select" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'listing-documents'
+    AND (
+      EXISTS (
+        SELECT 1 FROM public.listings
+        WHERE id::text = (storage.foldername(name))[1]
+        AND owner_id = auth.uid()
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.profiles
+        WHERE id = auth.uid() AND role = 'admin'
+      )
+    )
+  );
+
+CREATE POLICY "listing_docs_delete" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (
+    bucket_id = 'listing-documents'
+    AND EXISTS (
+      SELECT 1 FROM public.listings
+      WHERE id::text = (storage.foldername(name))[1]
+      AND owner_id = auth.uid()
+    )
+  );
+
+-- cid-documents (private bucket — owner and admins only)
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('cid-documents', 'cid-documents', false, 10485760)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "cid_docs_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'cid-documents'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "cid_docs_select" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'cid-documents'
+    AND (
+      (storage.foldername(name))[1] = auth.uid()::text
+      OR EXISTS (
+        SELECT 1 FROM public.profiles
+        WHERE id = auth.uid() AND role = 'admin'
+      )
+    )
+  );

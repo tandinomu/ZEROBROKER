@@ -4,12 +4,12 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
-import { Eye, EyeOff, Home, ShoppingBag, Building2, Users } from 'lucide-react'
+import { Eye, EyeOff, Home, ShoppingBag, Building2, Layers } from 'lucide-react'
 
 const ROLES = [
-  { value: 'buyer', label: 'Buyer', desc: 'I want to find and buy property', icon: <ShoppingBag size={18} /> },
-  { value: 'seller', label: 'Seller', desc: 'I want to sell or rent property', icon: <Building2 size={18} /> },
-  { value: 'broker', label: 'Broker', desc: 'I am a licensed real estate agent', icon: <Users size={18} /> },
+  { value: 'buyer',  label: 'Buyer',          desc: 'I want to find and buy property',   icon: <ShoppingBag size={18} /> },
+  { value: 'seller', label: 'Seller',         desc: 'I want to list and sell property',   icon: <Building2 size={18} /> },
+  { value: 'both',   label: 'Buyer + Seller', desc: 'I want to buy and sell property',    icon: <Layers size={18} /> },
 ]
 
 export default function RegisterPage() {

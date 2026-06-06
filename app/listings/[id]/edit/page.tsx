@@ -3,6 +3,7 @@ import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DZONGKHAGS, PROPERTY_TYPES } from '@/lib/types'
+import { isEditable } from '@/lib/listing-lifecycle'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 
@@ -11,6 +12,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<any>(null)
+  const [listingStatus, setListingStatus] = useState<string>('')
   const router = useRouter()
   const supabase = createClient()
 
@@ -20,13 +22,19 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
       if (!user) { router.push('/auth/login'); return }
       const { data: lst } = await supabase.from('listings').select('*').eq('id', id).eq('owner_id', user.id).single()
       if (!lst) { toast.error('Listing not found or access denied'); router.push('/dashboard'); return }
+      if (!isEditable(lst.status)) {
+        toast.error(`Listings with status "${lst.status}" cannot be edited. Only drafts and rejected listings can be edited.`)
+        router.push(`/listings/${id}`)
+        return
+      }
+      setListingStatus(lst.status)
       setForm({
         title: lst.title, description: lst.description, price: lst.price.toString(),
         property_type: lst.property_type, dzongkhag: lst.dzongkhag, gewog: lst.gewog || '',
         location_name: lst.location_name, latitude: lst.latitude?.toString() || '',
         longitude: lst.longitude?.toString() || '', bedrooms: lst.bedrooms?.toString() || '',
         bathrooms: lst.bathrooms?.toString() || '', area_sqft: lst.area_sqft?.toString() || '',
-        is_featured: lst.is_featured, amenities: lst.amenities?.join(', ') || '', status: lst.status,
+        is_featured: lst.is_featured, amenities: lst.amenities?.join(', ') || '',
       })
       setLoading(false)
     }
@@ -48,7 +56,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
       bedrooms: form.bedrooms ? parseInt(form.bedrooms) : null,
       bathrooms: form.bathrooms ? parseInt(form.bathrooms) : null,
       area_sqft: form.area_sqft ? parseFloat(form.area_sqft) : null,
-      is_featured: form.is_featured, amenities: amenitiesArr, status: form.status,
+      is_featured: form.is_featured, amenities: amenitiesArr,
       updated_at: new Date().toISOString(),
     }).eq('id', id)
     if (error) toast.error(error.message)
@@ -75,12 +83,11 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
               <div><label className="label">Price (Nu.)</label><input type="number" value={form.price} onChange={e => set('price', e.target.value)} required className="input-field" min="0" /></div>
             </div>
             <div><label className="label">Description</label><textarea value={form.description} onChange={e => set('description', e.target.value)} required rows={4} className="input-field" style={{ resize: 'vertical' }} /></div>
-            <div><label className="label">Status</label>
-              <select value={form.status} onChange={e => set('status', e.target.value)} className="input-field">
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
-              </select>
-            </div>
+            {listingStatus === 'rejected' && (
+              <div style={{ padding: '10px 14px', background: '#FCEBEB', borderRadius: 8, fontSize: 13, color: '#7c1e1e' }}>
+                This listing was rejected. Fix the issues below then return to the listing page to resubmit.
+              </div>
+            )}
           </div>
         </div>
 

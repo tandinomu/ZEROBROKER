@@ -25,8 +25,8 @@ function ListingsContent() {
 
   const loadListings = useCallback(async () => {
     setLoading(true)
-    let query = supabase.from('listings').select('*, profiles(full_name,role)', { count: 'exact' })
-      .eq('status', 'active')
+    let query = supabase.from('listings').select('*', { count: 'exact' })
+      .in('status', ['approved', 'active', 'enquiring', 'negotiating'])
     if (q) query = query.ilike('title', `%${q}%`)
     if (dzongkhag) query = query.eq('dzongkhag', dzongkhag)
     if (type) query = query.eq('property_type', type)

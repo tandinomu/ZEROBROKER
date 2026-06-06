@@ -27,8 +27,8 @@ export default function NewListingPage() {
       supabase.from('profiles').select('*').eq('id', user.id).single()
         .then(({ data }) => {
           setProfile(data)
-          if (data && !['seller','broker','admin'].includes(data.role)) {
-            toast.error('Only sellers and brokers can create listings')
+          if (data && !['seller','both','admin'].includes(data.role)) {
+            toast.error('Only sellers can create listings')
             router.push('/dashboard')
           }
         })
@@ -65,37 +65,58 @@ export default function NewListingPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!profile) return
+    e.preventDefault()
     setLoading(true)
-    const amenitiesArr = form.amenities ? form.amenities.split(',').map(s => s.trim()).filter(Boolean) : []
-    const { data, error } = await supabase.from('listings').insert({
-      owner_id: profile.id,
-      title: form.title, description: form.description,
-      price: parseFloat(form.price),
-      property_type: form.property_type,
-      dzongkhag: form.dzongkhag, gewog: form.gewog || null,
-      location_name: form.location_name,
-      latitude: form.latitude ? parseFloat(form.latitude) : null,
-      longitude: form.longitude ? parseFloat(form.longitude) : null,
-      bedrooms: form.bedrooms ? parseInt(form.bedrooms) : null,
-      bathrooms: form.bathrooms ? parseInt(form.bathrooms) : null,
-      area_sqft: form.area_sqft ? parseFloat(form.area_sqft) : null,
-      is_featured: form.is_featured,
-      images, amenities: amenitiesArr,
-      status: 'pending',
-    }).select().single()
-    if (error) { toast.error('Failed to create listing: ' + error.message) }
-    else {
-      toast.success('Listing submitted for review! It will go live once approved.')
-      router.push(`/listings/${data.id}`)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        toast.error('Not authenticated — please login and try again')
+        router.push('/auth/login')
+        setLoading(false)
+        return
+      }
+
+      const amenitiesArr = form.amenities ? form.amenities.split(',').map(s => s.trim()).filter(Boolean) : []
+      const payload = {
+        owner_id: user.id,
+        title: form.title,
+        description: form.description,
+        price: parseFloat(form.price),
+        property_type: form.property_type,
+        dzongkhag: form.dzongkhag,
+        gewog: form.gewog || null,
+        location_name: form.location_name,
+        latitude: form.latitude ? parseFloat(form.latitude) : null,
+        longitude: form.longitude ? parseFloat(form.longitude) : null,
+        bedrooms: form.bedrooms ? parseInt(form.bedrooms) : null,
+        bathrooms: form.bathrooms ? parseInt(form.bathrooms) : null,
+        area_sqft: form.area_sqft ? parseFloat(form.area_sqft) : null,
+        is_featured: form.is_featured,
+        images,
+        amenities: amenitiesArr,
+        status: 'draft',
+      }
+
+      const { data, error } = await supabase.from('listings').insert(payload).select().single()
+      if (error) {
+        console.error('Listing insert error:', error)
+        toast.error('Failed to create listing: ' + (error.message || JSON.stringify(error)))
+      } else {
+        toast.success('Listing saved as draft! Verify your identity then submit for review.')
+        router.push(`/listings/${data.id}`)
+      }
+    } catch (err) {
+      console.error('Unexpected error creating listing:', err)
+      toast.error('Unexpected error creating listing')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
     <div className="container-main page-pad" style={{ maxWidth: 680 }}>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 700, color: 'var(--forest)', marginBottom: 6 }}>List a Property</h1>
-      <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 24 }}>Your listing will be reviewed and approved before going live.</p>
+      <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 24 }}>Your listing will be saved as a draft. Upload documents and verify your CID before submitting for review.</p>
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div className="card" style={{ padding: 22 }}>
@@ -216,7 +237,7 @@ export default function NewListingPage() {
 
         <button type="submit" className="btn-primary" disabled={loading}
           style={{ padding: '13px 28px', fontSize: 15, justifyContent: 'center', opacity: loading ? 0.7 : 1 }}>
-          {loading ? 'Submitting...' : 'Submit for Review'}
+          {loading ? 'Saving...' : 'Save as Draft'}
         </button>
       </form>
     </div>

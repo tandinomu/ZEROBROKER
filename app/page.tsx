@@ -15,21 +15,21 @@ export default function HomePage() {
   const [q, setQ] = useState('')
   const [dzongkhag, setDzongkhag] = useState('')
   const [type, setType] = useState('')
-  const [stats, setStats] = useState({ listings: 0, brokers: 0 })
+  const [stats, setStats] = useState({ listings: 0, sellers: 0 })
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
     async function load() {
-      const [{ data: feat }, { data: recent }, { count: lc }, { count: bc }] = await Promise.all([
-        supabase.from('listings').select('*, profiles(full_name,role)').eq('is_featured', true).eq('status', 'active').limit(4),
-        supabase.from('listings').select('*, profiles(full_name,role)').eq('status', 'active').order('created_at', { ascending: false }).limit(8),
-        supabase.from('listings').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-        supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'broker'),
+      const [{ data: feat }, { data: recent }, { count: lc }, { count: sc }] = await Promise.all([
+        supabase.from('listings').select('*').eq('is_featured', true).in('status', ['approved', 'active']).limit(4),
+        supabase.from('listings').select('*').in('status', ['approved', 'active']).order('created_at', { ascending: false }).limit(8),
+        supabase.from('listings').select('*', { count: 'exact', head: true }).in('status', ['approved', 'active']),
+        supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'seller'),
       ])
       setFeatured(feat || [])
       setListings(recent || [])
-      setStats({ listings: lc || 0, brokers: bc || 0 })
+      setStats({ listings: lc || 0, sellers: sc || 0 })
       setLoading(false)
     }
     load()
@@ -59,7 +59,7 @@ export default function HomePage() {
               Find Your Property<br />Across Bhutan
             </h1>
             <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.75)', marginBottom: 32, lineHeight: 1.7 }}>
-              Browse verified listings from licensed brokers and direct sellers across all 20 Dzongkhags.
+              Browse verified listings from direct sellers across all 20 Dzongkhags — with trusted identities, transparent pricing, and fraud prevention built in.
             </p>
             <form onSubmit={handleSearch} style={{ background: 'white', borderRadius: 14, padding: 10, display: 'flex', flexWrap: 'wrap', gap: 8, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
               <div style={{ flex: '1 1 160px', position: 'relative' }}>
@@ -89,7 +89,7 @@ export default function HomePage() {
           <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)' }}>
             {[
               { label: 'Active Listings', value: stats.listings, icon: <TrendingUp size={17} /> },
-              { label: 'Verified Brokers', value: stats.brokers, icon: <Shield size={17} /> },
+              { label: 'Verified Sellers', value: stats.sellers, icon: <Shield size={17} /> },
               { label: 'Dzongkhags', value: 20, icon: <MapPin size={17} /> },
             ].map((s, i) => (
               <div key={i} style={{ textAlign: 'center', padding: '18px 0', borderRight: i < 2 ? '1px solid var(--border)' : '' }}>
@@ -184,7 +184,7 @@ export default function HomePage() {
             </div>
             <div style={{ display: 'flex', gap: 36 }}>
               {[
-                { title: 'Platform', links: [['Browse', '/listings'], ['Brokers', '/brokers'], ['Map', '/map']] },
+                { title: 'Platform', links: [['Browse', '/listings'], ['Map', '/map']] },
                 { title: 'Account', links: [['Register', '/auth/register'], ['Login', '/auth/login'], ['Dashboard', '/dashboard']] },
               ].map(col => (
                 <div key={col.title}>

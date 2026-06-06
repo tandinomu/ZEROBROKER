@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types'
-import { Bell, Menu, X, ChevronDown, Home, Search, Users, Map, Plus, Shield } from 'lucide-react'
+import { Bell, Menu, X, ChevronDown, Home, Search, Map, Plus, Shield, Sun, Moon } from 'lucide-react'
 
 export default function Navbar() {
   const [user, setUser] = useState<any>(null)
@@ -12,6 +12,18 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [isDark, setIsDark] = useState(false)
+
+  useEffect(() => {
+    setIsDark(document.documentElement.classList.contains('dark'))
+  }, [])
+
+  function toggleTheme() {
+    const next = !isDark
+    setIsDark(next)
+    if (next) { document.documentElement.classList.add('dark'); localStorage.setItem('zb-theme', 'dark') }
+    else { document.documentElement.classList.remove('dark'); localStorage.setItem('zb-theme', 'light') }
+  }
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -56,10 +68,9 @@ export default function Navbar() {
   const navLinks = [
     { href: '/listings', label: 'Properties', icon: <Search size={14} /> },
     { href: '/map', label: 'Map', icon: <Map size={14} /> },
-    { href: '/brokers', label: 'Brokers', icon: <Users size={14} /> },
   ]
 
-  const canList = profile?.role === 'seller' || profile?.role === 'broker' || profile?.role === 'admin'
+  const canList = profile?.role === 'seller' || profile?.role === 'both' || profile?.role === 'admin'
   const isAdmin = profile?.role === 'admin'
 
   return (
@@ -89,6 +100,12 @@ export default function Navbar() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all 0.2s' }}
+              onMouseOver={e => (e.currentTarget.style.background = 'var(--cream-dark)')}
+              onMouseOut={e => (e.currentTarget.style.background = 'transparent')}>
+              {isDark ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
             {user ? (
               <>
                 <Link href="/dashboard?tab=notifications" style={{ position: 'relative', padding: 8, borderRadius: 8, color: 'var(--muted)', textDecoration: 'none', display: 'flex' }}>

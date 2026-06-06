@@ -1,0 +1,85 @@
+name: ci-cd-pipeline
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  # --- 1. DEVOPS: QUALITY, SECURITY & TEST ---
+  test_and_scan:
+    name: Test & Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # DevOps Practice: Security vulnerability scanning
+      - name: Security Scan (NPM Audit)
+        run: npm audit --audit-level=high
+
+      - name: Run Unit Tests
+        run: npm test
+
+  # --- 2. BUILD ARTIFACTS (Runs if tests pass) ---
+  build:
+    name: Build Application
+    needs: test_and_scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install & Build
+        run: |
+          npm ci
+          npm run build
+
+      # DevOps Practice: Saving the production-ready build artifact
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-dist
+          path: ./dist # Change to build/ or .next/ depending on your framework
+
+  # --- 3. DEPLOYMENT (Only runs on push/merge to main) ---
+  deploy:
+    name: Deploy to Production Server
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-dist
+          path: ./dist
+
+      # Deployment Practice: Deploying via SSH using secure repository secrets
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /var/www/my-app
+            echo "Pulling latest changes or copying build artifact..."
+            # Add your actual server deployment commands here, for example:
+            # pm2 restart app || npm run start

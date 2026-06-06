@@ -12,7 +12,7 @@ export default function MapPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    supabase.from('listings').select('*').eq('status', 'active')
+    supabase.from('listings').select('*').in('status', ['approved', 'active'])
       .not('latitude', 'is', null).not('longitude', 'is', null).limit(50)
       .then(({ data }) => { setListings(data || []); setLoading(false) })
   }, [])
