@@ -40,11 +40,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
@@ -53,19 +48,8 @@ jobs:
           mkdir -p .vercel
           echo '{"projectId":"${{ secrets.VERCEL_PROJECT_ID }}","orgId":"${{ secrets.VERCEL_ORG_ID }}"}' > .vercel/project.json
 
-      - name: Pull Vercel Environment
-        run: vercel pull --yes --environment=production
-
-      - name: Set environment variables
-        run: |
-          echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" >> .env.production.local
-          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" >> .env.production.local
-
-      - name: Build
-        run: vercel build --prod
-
-      - name: Deploy
-        run: vercel deploy --prebuilt --prod
+      - name: Deploy to Production
+        run: vercel deploy --prod --yes
 
   # --- 3. PREVIEW DEPLOY (pull requests only) ---
   preview:
@@ -78,11 +62,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
@@ -91,16 +70,10 @@ jobs:
           mkdir -p .vercel
           echo '{"projectId":"${{ secrets.VERCEL_PROJECT_ID }}","orgId":"${{ secrets.VERCEL_ORG_ID }}"}' > .vercel/project.json
 
-      - name: Pull Vercel Environment
-        run: vercel pull --yes --environment=preview
-
-      - name: Build Preview
-        run: vercel build
-
       - name: Deploy Preview
         id: preview_deploy
         run: |
-          url=$(vercel deploy --prebuilt)
+          url=$(vercel deploy --yes)
           echo "preview_url=$url" >> $GITHUB_OUTPUT
 
       - name: Comment Preview URL on PR
