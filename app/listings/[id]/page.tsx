@@ -19,6 +19,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [myEnquiry, setMyEnquiry] = useState<Enquiry | null>(null)
   const [enquiryCount, setEnquiryCount] = useState(0)
   const [message, setMessage] = useState('')
+  const [offerPrice, setOfferPrice] = useState('')
   const [sending, setSending] = useState(false)
   const [saved, setSaved] = useState(false)
   const [imgIdx, setImgIdx] = useState(0)
@@ -81,14 +82,18 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
     if (!user) { router.push('/auth/login'); return }
     if (!listing) return
     setSending(true)
+    const fullMessage = offerPrice
+      ? `[Offered Price: Nu. ${parseFloat(offerPrice).toLocaleString()}]\n\n${message}`
+      : message
     const { data, error } = await supabase.from('enquiries').insert({
-      listing_id: id, buyer_id: user.id, seller_id: listing.owner_id, message,
+      listing_id: id, buyer_id: user.id, seller_id: listing.owner_id, message: fullMessage,
     }).select().single()
     if (error) { toast.error('Failed to send enquiry: ' + error.message) }
     else {
       setMyEnquiry(data)
       setMessage('')
-      toast.success('Enquiry sent!')
+      setOfferPrice('')
+      toast.success('Offer sent!')
       await supabase.from('notifications').insert({
         user_id: listing.owner_id, title: 'New enquiry received',
         message: `${profile?.full_name} is interested in "${listing.title}"`,
@@ -749,22 +754,105 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
             </div>
           )}
 
+          {/* ── Zero Broker Trust Layer ── */}
+          {['approved', 'active', 'enquiring', 'negotiating'].includes(listing.status) && (
+            <div className="card" style={{ padding: 18, border: '1.5px solid var(--forest)', background: 'rgba(26,58,42,0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--forest)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <ShieldCheck size={16} color="white" />
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 700, color: 'var(--forest)' }}>Zero Broker Trust Layer</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>What we verified before listing</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {[
+                  {
+                    done: true,
+                    label: 'Admin reviewed & approved',
+                    detail: 'Every listing is manually checked before going live',
+                  },
+                  {
+                    done: owner?.cid_status === 'verified',
+                    label: owner?.cid_status === 'verified' ? 'Seller identity verified (CID)' : 'Seller CID pending verification',
+                    detail: owner?.cid_status === 'verified' ? 'Citizen Identity Document checked by admin' : 'CID submitted, under admin review',
+                  },
+                  {
+                    done: docs.filter(d => d.status === 'verified').length > 0,
+                    label: docs.filter(d => d.status === 'verified').length > 0
+                      ? `${docs.filter(d => d.status === 'verified').length} ownership document(s) verified`
+                      : 'No documents uploaded yet',
+                    detail: 'Ownership certificates, tax clearances, land thram',
+                  },
+                  {
+                    done: true,
+                    label: '0% broker commission',
+                    detail: 'Seller lists directly — you pay the listed price only',
+                  },
+                  {
+                    done: true,
+                    label: 'Dual deal confirmation',
+                    detail: 'Both parties confirm on-platform before the deal closes',
+                  },
+                ].map((item, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+                    <div style={{ width: 18, height: 18, borderRadius: '50%', background: item.done ? '#C0DD97' : 'var(--cream-dark)', border: `1.5px solid ${item.done ? '#27500A' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                      {item.done
+                        ? <CheckCircle size={11} color="#27500A" />
+                        : <AlertCircle size={11} color="var(--muted)" />}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: item.done ? 'var(--charcoal)' : 'var(--muted)' }}>{item.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>{item.detail}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Enquiry form */}
           {canEnquire && (
             <div className="card" style={{ padding: 20 }}>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 15, color: 'var(--charcoal)', marginBottom: 4 }}>Send Enquiry</h3>
-              <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>Message the seller directly about this property.</p>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 15, color: 'var(--charcoal)', marginBottom: 2 }}>Make an Offer</h3>
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>Contact the seller directly — no broker, no middleman.</p>
               <form onSubmit={handleEnquiry} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <textarea
-                  value={message}
-                  onChange={e => setMessage(e.target.value)}
-                  required rows={4}
-                  className="input-field"
-                  placeholder="Hi, I'm interested in this property. Can we arrange a visit?"
-                  style={{ resize: 'vertical', fontSize: 13 }}
-                />
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--charcoal)', display: 'block', marginBottom: 5 }}>
+                    Your Offer Price (Nu.) <span style={{ fontWeight: 400, color: 'var(--muted)' }}>— optional</span>
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>Nu.</span>
+                    <input
+                      type="number"
+                      value={offerPrice}
+                      onChange={e => setOfferPrice(e.target.value)}
+                      className="input-field"
+                      placeholder={listing.price.toString()}
+                      min="0"
+                      style={{ paddingLeft: 38, fontSize: 13 }}
+                    />
+                  </div>
+                  {offerPrice && parseFloat(offerPrice) < listing.price && (
+                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>
+                      {((1 - parseFloat(offerPrice) / listing.price) * 100).toFixed(1)}% below asking price
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--charcoal)', display: 'block', marginBottom: 5 }}>Message *</label>
+                  <textarea
+                    value={message}
+                    onChange={e => setMessage(e.target.value)}
+                    required rows={3}
+                    className="input-field"
+                    placeholder="Hi, I'm interested in this property. Can we arrange a visit?"
+                    style={{ resize: 'vertical', fontSize: 13 }}
+                  />
+                </div>
                 <button type="submit" className="btn-primary" disabled={sending} style={{ width: '100%', justifyContent: 'center', background: '#1D9E75', opacity: sending ? 0.7 : 1 }}>
-                  {sending ? 'Sending...' : 'Send Enquiry'}
+                  <Send size={14} />{sending ? 'Sending...' : 'Send Offer'}
                 </button>
               </form>
             </div>

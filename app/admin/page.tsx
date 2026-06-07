@@ -40,6 +40,8 @@ export default function AdminPage() {
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
   const [submittingReject, setSubmittingReject] = useState(false)
+  const [rejectingDocId, setRejectingDocId] = useState<string | null>(null)
+  const [docRejectionReason, setDocRejectionReason] = useState('')
   const router = useRouter()
   const supabase = createClient()
 
@@ -321,7 +323,7 @@ export default function AdminPage() {
                                       </button>
                                     )}
                                     {d.status !== 'rejected' && (
-                                      <button onClick={() => { const r = prompt('Rejection reason (optional):'); verifyDoc(d.id, 'rejected', r || undefined) }} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none', background: '#FCEBEB', color: '#e24b4a', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
+                                      <button onClick={() => { setRejectingDocId(d.id); setDocRejectionReason('') }} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none', background: '#FCEBEB', color: '#e24b4a', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
                                         ✗ Reject
                                       </button>
                                     )}
@@ -463,6 +465,36 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── DOCUMENT REJECTION MODAL ── */}
+      {rejectingDocId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
+          <div className="card" style={{ width: '100%', maxWidth: 400, padding: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, color: 'var(--charcoal)' }}>Reject Document</h2>
+              <button onClick={() => setRejectingDocId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>Optionally explain why this document was rejected so the seller can re-upload a correct one.</p>
+            <textarea
+              value={docRejectionReason}
+              onChange={e => setDocRejectionReason(e.target.value)}
+              rows={3}
+              className="input-field"
+              placeholder="e.g. Image is blurry — please re-upload a clearer scan."
+              style={{ resize: 'vertical', fontSize: 13, marginBottom: 14 }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => { verifyDoc(rejectingDocId, 'rejected', docRejectionReason.trim() || undefined); setRejectingDocId(null) }}
+                style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: '#e24b4a', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
+                Confirm Rejection
+              </button>
+              <button onClick={() => setRejectingDocId(null)} className="btn-ghost" style={{ fontSize: 13 }}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
 

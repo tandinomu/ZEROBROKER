@@ -7,11 +7,15 @@ import type { Listing } from '@/lib/types'
 import { DZONGKHAGS, PROPERTY_TYPES } from '@/lib/types'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 
+const PAGE_SIZE = 12
+
 function ListingsContent() {
   const params = useSearchParams()
   const [listings, setListings] = useState<Listing[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
   const [showFilters, setShowFilters] = useState(false)
   const supabase = createClient()
   const [q, setQ] = useState(params.get('q') || '')
@@ -23,8 +27,7 @@ function ListingsContent() {
   const [featured, setFeatured] = useState(params.get('featured') === 'true')
   const [sort, setSort] = useState('newest')
 
-  const loadListings = useCallback(async () => {
-    setLoading(true)
+  function buildQuery(currentOffset: number) {
     let query = supabase.from('listings').select('*', { count: 'exact' })
       .in('status', ['approved', 'active', 'enquiring', 'negotiating'])
     if (q) query = query.ilike('title', `%${q}%`)
@@ -37,11 +40,26 @@ function ListingsContent() {
     if (sort === 'newest') query = query.order('created_at', { ascending: false })
     else if (sort === 'price_asc') query = query.order('price', { ascending: true })
     else if (sort === 'price_desc') query = query.order('price', { ascending: false })
-    const { data, count } = await query.limit(24)
+    return query.range(currentOffset, currentOffset + PAGE_SIZE - 1)
+  }
+
+  const loadListings = useCallback(async () => {
+    setLoading(true)
+    setOffset(0)
+    const { data, count } = await buildQuery(0)
     setListings(data || [])
     setTotal(count || 0)
     setLoading(false)
   }, [q, dzongkhag, type, minPrice, maxPrice, minBeds, featured, sort])
+
+  async function loadMore() {
+    const nextOffset = offset + PAGE_SIZE
+    setLoadingMore(true)
+    const { data } = await buildQuery(nextOffset)
+    setListings(prev => [...prev, ...(data || [])])
+    setOffset(nextOffset)
+    setLoadingMore(false)
+  }
 
   useEffect(() => { loadListings() }, [loadListings])
 
@@ -137,9 +155,31 @@ function ListingsContent() {
           {hasFilters && <button onClick={clearFilters} className="btn-primary" style={{ marginTop: 14 }}>Clear filters</button>}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 18 }}>
-          {listings.map(l => <ListingCard key={l.id} listing={l} />)}
-        </div>
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 18 }}>
+            {listings.map(l => <ListingCard key={l.id} listing={l} />)}
+          </div>
+          {listings.length < total && (
+            <div style={{ textAlign: 'center', marginTop: 32 }}>
+              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+                Showing {listings.length} of {total} listings
+              </p>
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="btn-outline"
+                style={{ padding: '10px 32px', fontSize: 14, opacity: loadingMore ? 0.7 : 1 }}
+              >
+                {loadingMore ? 'Loading...' : 'Load More'}
+              </button>
+            </div>
+          )}
+          {listings.length === total && total > PAGE_SIZE && (
+            <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--muted)', marginTop: 24 }}>
+              All {total} listings loaded
+            </p>
+          )}
+        </>
       )}
     </div>
   )
