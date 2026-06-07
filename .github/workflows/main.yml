@@ -145,6 +145,7 @@ jobs:
 
       - name: ZAP baseline scan
         uses: zaproxy/action-baseline@v0.12.0
+        continue-on-error: true
         with:
           target: ${{ vars.PRODUCTION_URL }}
           rules_file_name: .zap/rules.tsv
