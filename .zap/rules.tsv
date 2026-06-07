@@ -1,0 +1,24 @@
+# ZAP baseline alert tuning for Next.js / Vercel deployment
+# Format: alert_id	ACTION	parameter	evidence
+# Actions: IGNORE=suppress entirely, WARN=treat as warning (default), FAIL=fail the build
+
+# Content-Security-Policy — Next.js doesn't set a default CSP header; suppress for baseline
+10038	WARN	Content Security Policy (CSP) Header Not Set
+
+# X-Frame-Options — Vercel sets this but ZAP sometimes misses it behind CDN
+10020	WARN	Missing Anti-clickjacking Header
+
+# X-Content-Type-Options — same CDN-layer header
+10021	WARN	X-Content-Type-Options Header Missing
+
+# Strict-Transport-Security — only served over HTTPS in production; Vercel handles it
+10035	WARN	Strict-Transport-Security Header Not Set
+
+# Server leaks version info via X-Powered-By — Next.js removes this but ZAP still flags
+10036	WARN	Server Leaks Version Information via "X-Powered-By" HTTP Response Header
+
+# Cookie without SameSite — Supabase auth cookies; not a risk in this context
+10054	WARN	Cookie without SameSite Attribute
+
+# Permissions Policy — not required for MVP
+10063	WARN	Permissions Policy Header Not Set

@@ -7,8 +7,15 @@ const config: Config = {
     '^@/(.*)$': '<rootDir>/$1',
   },
   testMatch: ['**/__tests__/**/*.test.ts'],
-  // Exclude Next.js internals from transformation
   transformIgnorePatterns: ['/node_modules/'],
+
+  // Coverage — consumed by SonarCloud in CI
+  collectCoverageFrom: [
+    'lib/**/*.ts',
+    '!lib/**/*.d.ts',
+  ],
+  coverageReporters: ['lcov', 'text', 'clover'],
+  coverageDirectory: 'coverage',
 }
 
 export default config
