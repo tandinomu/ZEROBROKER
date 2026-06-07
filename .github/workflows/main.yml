@@ -57,9 +57,13 @@ jobs:
 
       - name: SonarCloud scan
         uses: SonarSource/sonarqube-scan-action@v6
+        with:
+          args: >
+            -Dsonar.organization=tandinomu
+            -Dsonar.projectKey=tandinomu_ZEROBROKER
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_HOST_URL: https://sonarcloud.io
 
   # ─── 3. DEPLOY TO PRODUCTION (push to main only) ────────────────────────────
   deploy:
