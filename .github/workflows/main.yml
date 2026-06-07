@@ -146,7 +146,7 @@ jobs:
       - name: ZAP baseline scan
         uses: zaproxy/action-baseline@v0.12.0
         with:
-          target: ${{ needs.deploy.outputs.deployment_url }}
+          target: ${{ vars.PRODUCTION_URL }}
           rules_file_name: .zap/rules.tsv
           fail_action: false
-          artifact_name: zap-report-production
+          artifact_name: zap_report_production
