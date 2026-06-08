@@ -42,6 +42,9 @@ export default function AdminPage() {
   const [submittingReject, setSubmittingReject] = useState(false)
   const [rejectingDocId, setRejectingDocId] = useState<string | null>(null)
   const [docRejectionReason, setDocRejectionReason] = useState('')
+  const [rejectingCidUserId, setRejectingCidUserId] = useState<string | null>(null)
+  const [cidRejectionReason, setCidRejectionReason] = useState('')
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -147,6 +150,25 @@ export default function AdminPage() {
     toast.success('Listing marked as Verified!')
   }
 
+  async function viewCid(urlOrPath: string) {
+    const path = urlOrPath.startsWith('http')
+      ? urlOrPath.slice(urlOrPath.indexOf('/cid-documents/') + '/cid-documents/'.length)
+      : urlOrPath
+    const { data, error } = await supabase.storage.from('cid-documents').createSignedUrl(path, 60)
+    if (error || !data) { toast.error('Could not open file'); return }
+    setPreviewUrl(data.signedUrl)
+  }
+
+  async function verifyCid(userId: string, status: 'verified' | 'rejected', reason?: string) {
+    await supabase.from('profiles').update({
+      cid_status: status,
+      is_verified: status === 'verified',
+      ...(reason ? { cid_rejection_reason: reason } : {}),
+    }).eq('id', userId)
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, cid_status: status, is_verified: status === 'verified' } as any : u))
+    toast.success(status === 'verified' ? 'CID verified — user is now verified!' : 'CID rejected')
+  }
+
   async function resolveReport(reportId: string, status: 'resolved' | 'dismissed') {
     const { data: { user: u } } = await supabase.auth.getUser()
     await supabase.from('listing_reports').update({ status, reviewed_by: u?.id }).eq('id', reportId)
@@ -161,10 +183,12 @@ export default function AdminPage() {
     </div>
   )
 
+  const pendingCids = users.filter(u => (u as any).cid_status === 'pending').length
+
   const tabs = [
     { id: 'listings', label: 'Pending Listings', count: pendingListings.length, icon: <Home size={14} />, urgent: pendingListings.length > 0 },
     { id: 'reports',  label: 'Fraud Reports',    count: reports.filter(r => r.status === 'pending').length, icon: <Flag size={14} />, urgent: reports.some(r => r.status === 'pending') },
-    { id: 'users',    label: 'All Users',         count: users.length, icon: <Users size={14} />, urgent: false },
+    { id: 'users',    label: 'All Users',         count: pendingCids > 0 ? pendingCids : users.length, icon: <Users size={14} />, urgent: pendingCids > 0 },
   ]
 
   const pendingReports = reports.filter(r => r.status === 'pending').length
@@ -445,26 +469,126 @@ export default function AdminPage() {
       {/* ── USERS ── */}
       {tab === 'users' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {users.map(u => (
-            <div key={u.id} className="card" style={{ padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--cream-dark)', border: '1.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-                  {u.full_name?.[0]?.toUpperCase()}
-                </div>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--charcoal)' }}>{u.full_name}</div>
-                  {u.phone && <div style={{ fontSize: 12, color: 'var(--muted)' }}>{u.phone}</div>}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 10, background: 'var(--cream-dark)', color: 'var(--charcoal-mid)', textTransform: 'capitalize', fontWeight: 600 }}>{u.role}</span>
-                {u.is_verified && <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 10, background: '#C0DD97', color: '#27500A', fontWeight: 600 }}>✓ Verified</span>}
-                <span style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <Calendar size={11} />{new Date(u.created_at).toLocaleDateString()}
-                </span>
-              </div>
+          {pendingCids > 0 && (
+            <div style={{ padding: '10px 14px', background: '#FAC775', borderRadius: 8, fontSize: 13, color: '#633806', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <ShieldCheck size={14} />{pendingCids} user{pendingCids > 1 ? 's' : ''} waiting for CID verification
             </div>
-          ))}
+          )}
+          {users.map(u => {
+            const cidStatus = (u as any).cid_status as string | undefined
+            const cidFront = (u as any).cid_url as string | undefined
+            const cidBack = (u as any).cid_back_url as string | undefined
+            const hasCid = !!(cidFront || cidBack)
+            const cidColors: Record<string, { label: string; color: string; bg: string }> = {
+              unverified: { label: 'Not uploaded', color: '#444441', bg: '#F1EFE8' },
+              pending:    { label: 'Pending review', color: '#633806', bg: '#FAC775' },
+              verified:   { label: 'Verified', color: '#27500A', bg: '#C0DD97' },
+              rejected:   { label: 'Rejected', color: '#7c1e1e', bg: '#FCEBEB' },
+            }
+            const cidCfg = cidColors[cidStatus || 'unverified']
+            return (
+              <div key={u.id} className="card" style={{ padding: '14px 18px', borderLeft: cidStatus === 'pending' ? '3px solid #FAC775' : '3px solid transparent' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--cream-dark)', border: '1.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+                      {u.full_name?.[0]?.toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--charcoal)' }}>{u.full_name}</div>
+                      {u.phone && <div style={{ fontSize: 12, color: 'var(--muted)' }}>{u.phone}</div>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 10, background: 'var(--cream-dark)', color: 'var(--charcoal-mid)', textTransform: 'capitalize', fontWeight: 600 }}>{u.role}</span>
+                    {u.is_verified && <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 10, background: '#C0DD97', color: '#27500A', fontWeight: 600 }}>✓ Verified</span>}
+                    <span style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Calendar size={11} />{new Date(u.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* CID section */}
+                {hasCid && (
+                  <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--cream)', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <FileText size={13} color="var(--charcoal-mid)" />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--charcoal-mid)' }}>CID / Identity Document</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: cidCfg.bg, color: cidCfg.color }}>{cidCfg.label}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {cidFront && (
+                          <button onClick={() => viewCid(cidFront)} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--forest)', fontFamily: 'var(--font-body)' }}>
+                            <Eye size={11} style={{ display: 'inline', marginRight: 3 }} />Front
+                          </button>
+                        )}
+                        {cidBack && (
+                          <button onClick={() => viewCid(cidBack)} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--forest)', fontFamily: 'var(--font-body)' }}>
+                            <Eye size={11} style={{ display: 'inline', marginRight: 3 }} />Back
+                          </button>
+                        )}
+                        {cidStatus !== 'verified' && (
+                          <button onClick={() => verifyCid(u.id, 'verified')} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 6, border: 'none', background: '#C0DD97', color: '#27500A', cursor: 'pointer', fontFamily: 'var(--font-body)', fontWeight: 600 }}>
+                            ✓ Verify
+                          </button>
+                        )}
+                        {cidStatus !== 'rejected' && (
+                          <button onClick={() => { setRejectingCidUserId(u.id); setCidRejectionReason('') }} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 6, border: 'none', background: '#FCEBEB', color: '#e24b4a', cursor: 'pointer', fontFamily: 'var(--font-body)', fontWeight: 600 }}>
+                            ✗ Reject
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── CID DOCUMENT PREVIEW MODAL ── */}
+      {previewUrl && (
+        <div onClick={() => setPreviewUrl(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'relative', maxWidth: 600, width: '100%', maxHeight: '80vh', borderRadius: 12, overflow: 'hidden', background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <button onClick={() => setPreviewUrl(null)} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: '#fff', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <X size={16} />
+            </button>
+            {previewUrl.match(/\.pdf(\?|$)/i)
+              ? <iframe src={previewUrl} style={{ width: '100%', height: '75vh', border: 'none', display: 'block' }} />
+              : <img src={previewUrl} alt="CID Preview" style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', display: 'block' }} />
+            }
+          </div>
+        </div>
+      )}
+
+      {/* ── CID REJECTION MODAL ── */}
+      {rejectingCidUserId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
+          <div className="card" style={{ width: '100%', maxWidth: 400, padding: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, color: 'var(--charcoal)' }}>Reject CID</h2>
+              <button onClick={() => setRejectingCidUserId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>Optionally explain why the CID was rejected so the user can re-upload.</p>
+            <textarea
+              value={cidRejectionReason}
+              onChange={e => setCidRejectionReason(e.target.value)}
+              rows={3}
+              className="input-field"
+              placeholder="e.g. Image is blurry — please re-upload a clearer photo."
+              style={{ resize: 'vertical', fontSize: 13, marginBottom: 14 }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => { verifyCid(rejectingCidUserId, 'rejected', cidRejectionReason.trim() || undefined); setRejectingCidUserId(null) }}
+                style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: '#e24b4a', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
+                Confirm Rejection
+              </button>
+              <button onClick={() => setRejectingCidUserId(null)} className="btn-ghost" style={{ fontSize: 13 }}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
 
