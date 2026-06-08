@@ -128,14 +128,18 @@ function DashboardContent() {
     const { data: msgs } = await supabase.from('messages').select('*, sender:sender_id(full_name)').eq('enquiry_id', enquiryId).order('created_at', { ascending: true })
     setChatMessages(msgs || [])
     if (chatChannelRef.current) supabase.removeChannel(chatChannelRef.current)
-    chatChannelRef.current = supabase.channel(`chat-${enquiryId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `enquiry_id=eq.${enquiryId}` },
-        async payload => {
-          const { data: sender } = await supabase.from('profiles').select('full_name').eq('id', payload.new.sender_id).single()
-          setChatMessages(prev => [...prev, { ...payload.new, sender } as Message])
-          setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-        })
-      .subscribe()
+    // Use a unique channel name each time — Supabase caches channels by name,
+    // so reusing the same name returns the already-subscribed channel and throws
+    // "cannot add postgres_changes callbacks after subscribe()".
+    const channel = supabase.channel(`chat-${enquiryId}-${Date.now()}`)
+    channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `enquiry_id=eq.${enquiryId}` },
+      async payload => {
+        const { data: sender } = await supabase.from('profiles').select('full_name').eq('id', payload.new.sender_id).single()
+        setChatMessages(prev => [...prev, { ...payload.new, sender } as Message])
+        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+      })
+    channel.subscribe()
+    chatChannelRef.current = channel
     setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }
 
@@ -954,13 +958,6 @@ function ProfileEditor({ profile, onSave }: { profile: Profile, onSave: (p: Prof
       return idx !== -1 ? urlOrPath.slice(idx + marker.length) : urlOrPath
     }
     return urlOrPath
-  }
-
-  async function viewDoc(urlOrPath: string) {
-    const path = extractStoragePath(urlOrPath, 'listing-documents')
-    const { data, error } = await supabase.storage.from('listing-documents').createSignedUrl(path, 60)
-    if (error || !data) { toast.error('Could not open file'); return }
-    setPreviewUrl(data.signedUrl)
   }
 
   async function viewCid(urlOrPath: string) {

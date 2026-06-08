@@ -35,6 +35,8 @@ export default function NewListingPage() {
     })
   }, [])
 
+  const cidReady = profile?.cid_status === 'pending' || profile?.cid_status === 'verified'
+
   function set(key: string, val: any) { setForm(f => ({ ...f, [key]: val })) }
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -63,8 +65,7 @@ export default function NewListingPage() {
     )
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
     try {
@@ -77,6 +78,7 @@ export default function NewListingPage() {
       }
 
       const amenitiesArr = form.amenities ? form.amenities.split(',').map(s => s.trim()).filter(Boolean) : []
+      const status = cidReady ? 'pending' : 'draft'
       const payload = {
         owner_id: user.id,
         title: form.title,
@@ -94,7 +96,7 @@ export default function NewListingPage() {
         is_featured: form.is_featured,
         images,
         amenities: amenitiesArr,
-        status: 'draft',
+        status,
       }
 
       const { data, error } = await supabase.from('listings').insert(payload).select().single()
@@ -102,7 +104,11 @@ export default function NewListingPage() {
         console.error('Listing insert error:', error)
         toast.error('Failed to create listing: ' + (error.message || JSON.stringify(error)))
       } else {
-        toast.success('Listing saved as draft! Verify your identity then submit for review.')
+        if (cidReady) {
+          toast.success('Listing submitted for review! Admin will approve it soon.')
+        } else {
+          toast.success('Listing saved as draft. Upload your CID in Dashboard → Profile to submit for review.')
+        }
         router.push(`/listings/${data.id}`)
       }
     } catch (err) {
@@ -235,9 +241,17 @@ export default function NewListingPage() {
           </div>
         </div>
 
+        {!cidReady && (
+          <div style={{ padding: '12px 16px', background: '#FAC775', borderRadius: 8, fontSize: 13, color: '#633806' }}>
+            <strong>CID not uploaded yet.</strong> Your listing will be saved as a draft. Go to{' '}
+            <a href="/dashboard?tab=profile" style={{ color: '#633806', fontWeight: 700 }}>Dashboard → Profile</a>{' '}
+            to upload your CID — once submitted, you can then submit this listing for admin review.
+          </div>
+        )}
+
         <button type="submit" className="btn-primary" disabled={loading}
           style={{ padding: '13px 28px', fontSize: 15, justifyContent: 'center', opacity: loading ? 0.7 : 1 }}>
-          {loading ? 'Saving...' : 'Save as Draft'}
+          {loading ? 'Saving...' : cidReady ? 'Submit for Review' : 'Save as Draft'}
         </button>
       </form>
     </div>

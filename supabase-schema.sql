@@ -268,11 +268,51 @@ CREATE POLICY "notif_update" ON notifications FOR UPDATE TO authenticated USING 
 CREATE POLICY "notif_insert" ON notifications FOR INSERT TO authenticated WITH CHECK (true);
 
 -- ============================================================
+-- MESSAGES (chat between buyer and seller on an enquiry)
+-- ============================================================
+CREATE TABLE messages (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  enquiry_id  UUID NOT NULL REFERENCES enquiries(id) ON DELETE CASCADE,
+  sender_id   UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  content     TEXT NOT NULL,
+  is_read     BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+
+-- Only the buyer or seller of the linked enquiry can read messages
+CREATE POLICY "messages_select" ON messages FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM enquiries e
+      WHERE e.id = messages.enquiry_id
+        AND (e.buyer_id = auth.uid() OR e.seller_id = auth.uid())
+    )
+  );
+
+-- Only the buyer or seller of the linked enquiry can insert messages
+CREATE POLICY "messages_insert" ON messages FOR INSERT TO authenticated
+  WITH CHECK (
+    auth.uid() = sender_id AND
+    EXISTS (
+      SELECT 1 FROM enquiries e
+      WHERE e.id = enquiry_id
+        AND (e.buyer_id = auth.uid() OR e.seller_id = auth.uid())
+    )
+  );
+
+-- Sender can update their own messages (e.g. mark read)
+CREATE POLICY "messages_update" ON messages FOR UPDATE TO authenticated
+  USING (auth.uid() = sender_id);
+
+-- ============================================================
 -- REALTIME
 -- ============================================================
 ALTER PUBLICATION supabase_realtime ADD TABLE listings;
 ALTER PUBLICATION supabase_realtime ADD TABLE enquiries;
 ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+ALTER PUBLICATION supabase_realtime ADD TABLE messages;
 
 -- ============================================================
 -- DUMMY DATA — auto-inserts after schema is ready
