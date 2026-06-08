@@ -169,7 +169,8 @@ export const STATUS_CONFIG: Record<ListingStatus, { label: string; color: string
   paused:      { label: 'Paused',           color: '#444441', bg: '#F1EFE8' },
 }
 
-export function formatPrice(price: number): string {
+export function formatPrice(price: number | null | undefined): string {
+  if (price == null || isNaN(price)) return 'Price N/A'
   if (price >= 10000000) return `Nu. ${(price / 10000000).toFixed(2)} Cr`
   if (price >= 100000) return `Nu. ${(price / 100000).toFixed(2)} L`
   return `Nu. ${price.toLocaleString()}`
